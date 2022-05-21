@@ -1,13 +1,14 @@
 AWSTemplateFormatVersion: 2010-09-09
+Description: This template is used to create a CI/CD Pipeline that deploys a React Web app to S3 for static website hosting.
+
+# Parameters to be used through out the template
 Parameters:
-  CodeCommitRepo:
-    Description: Name of CodeCommit Repo
+  Stage:
     Type: String
-    Default: zaminrepo
-  CodeCommitBranch:
-    Description: Name of CodeCommit Branch
+    Default: dev
+  AppName: 
     Type: String
-    Default: master  
+    Default: devops-prac
   GithubUserName:
     Type: String
     Default: dirtbag-ctrl
@@ -21,15 +22,22 @@ Parameters:
     Type: String
     Default: <GITHUB ACCESS TOKEN>
 
+# Resources that will be provisioned by this template.
 Resources:
+
+  # Create CodePipeline with 3 stages (Source, Build and Deploy)
   CodePipeline:
     Type: 'AWS::CodePipeline::Pipeline'
     Properties:
       RoleArn: !GetAtt CodePipeLineRole.Arn
+      Name: !Join ['-', [!Ref AppName, !Ref 'AWS::AccountId', 'CodePipeLine',!Ref Stage]]
       ArtifactStore:
         Location: !Ref PipelineBucket
         Type: S3
+
+      # Stages declaration
       Stages:
+     # Download source code from Github Repo to source-output-artifacts path in S3 Bucket
         - 
           Name: Source
           Actions: 
@@ -48,6 +56,8 @@ Resources:
                  Branch: !Ref GithubBranch
                  Owner: !Ref GithubUserName
                  OAuthToken: !Ref GithubOAuthToken
+        
+        # Build the project using the BuildProject and Output build artifacts to build-output-artifacts path in S3 Bucket
         - 
           Name: Build
           Actions: 
@@ -66,6 +76,8 @@ Resources:
                   Name: MyAppBuild
               Configuration:
                 ProjectName: !Ref CodeBuild
+
+        # Deploy the project to S3 Bucket for website hosting.
         - 
           Name: Deploy
           Actions: 
@@ -82,9 +94,12 @@ Resources:
               Configuration:                
                 BucketName: !Ref DeployBucket
                 Extract: 'true'                
+      # Create a name tag for the pipeline
       Tags:
         - Key: Name
-          Value: ZaminCfnPipeline
+          Value: !Join ['-', [!Ref AppName, !Ref 'AWS::AccountId', 'CodePipeLine',!Ref Stage]]
+
+  # Create role for CodeBuild
   CodeBuildRole:
     Type: AWS::IAM::Role
     Properties:
@@ -139,7 +154,10 @@ Resources:
                   - "*"
       Tags:
         - Key: Name
-          Value: ZaminCfnCodeBuildRole
+          Value: !Join ['-', [!Ref AppName, !Ref 'AWS::AccountId', 'BuildRole', !Ref Stage]]
+
+
+  # Create role for CodePipeline
   CodePipeLineRole:
     Type: AWS::IAM::Role
     Properties:
@@ -189,7 +207,10 @@ Resources:
                 Resource: "*"                
       Tags:
         - Key: Name
-          Value: ZaminCfnCodePipeLineRole
+          Value: !Join ['-', [!Ref AppName, !Ref 'AWS::AccountId', 'PipelineRole', !Ref Stage]]
+
+  
+  # Create Code Build Project
   CodeBuild:
     Type: 'AWS::CodeBuild::Project'
     Properties:
@@ -211,15 +232,20 @@ Resources:
 
       Tags:
         - Key: Name
-          Value: ZaminCfnCodeBuildProject
+          Value: !Join ['-', [!Ref AppName, !Ref 'AWS::AccountId', 'BuildProj', !Ref Stage]]
+
+
+  
+  # Create S3 Buckets (Storing Pipeline Artifacts, Website Hosting)
   PipelineBucket: 
     Type: 'AWS::S3::Bucket'
     Properties:
-      BucketName: zamincfncodepipelinebucketreact
+      BucketName: !Join ['-', [!Ref AppName, !Ref 'AWS::AccountId', 'pipelineartifacts', !Ref Stage]]
+
   DeployBucket:
     Type: 'AWS::S3::Bucket'
     Properties:
-      BucketName: zamincfncodepipelinedeploybucketreact
+      BucketName: !Join ['-', [!Ref AppName, !Ref 'AWS::AccountId', 'website', !Ref Stage]]
       WebsiteConfiguration:
         IndexDocument: index.html
       AccessControl: PublicReadWrite
@@ -228,6 +254,7 @@ Resources:
         - AllowedOrigins: ['*']
           AllowedMethods: [GET]
   
+  # Bucket policy that hosts the website
   DeploymentBucketPolicy: 
     Type: AWS::S3::BucketPolicy
     Properties: 
