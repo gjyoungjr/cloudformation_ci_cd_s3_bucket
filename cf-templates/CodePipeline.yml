@@ -20,7 +20,7 @@ Parameters:
     Default: master
   GithubOAuthToken:
     Type: String
-    Default: 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
+    Default: <GITHUB ACCESS TOKEN>
 
 #Define resources to be created
 Resources:
