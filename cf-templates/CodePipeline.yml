@@ -1,0 +1,205 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description: This template is used to create an S3 Bucket for static website hosting. 
+
+#Create parameters for templates to use as references
+Parameters: 
+  Stage:
+    Type: String
+    Default: dev
+  AppName:
+    Type: String
+    Default:  cf-ci-cd-prac
+  GithubUserName:
+    Type: String
+    Default: dirtbag-ctrl
+  GithubRepo:
+    Type: String
+    Default: cloudformation_ci_cd_s3_bucket
+  GithubBranch:
+    Type: String
+    Default: master
+  GithubOAuthToken:
+    Type: String
+    Default: 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
+
+#Define resources to be created
+Resources:
+  
+  #Create S3 Bucket to host website
+  WebsiteBucket:
+    Type: 'AWS::S3::Bucket'
+    Properties:
+      AccessControl: PublicRead
+      BucketName: !Join ['-', [!Ref AppName, !Ref 'AWS::AccountId', 's3-website', !Ref Stage]]
+      WebsiteConfiguration:
+        IndexDocument: index.html
+        ErrorDocument: error.html
+    DeletionPolicy: Retain
+  
+  #Create S3 Bucket Policy for public read access  
+  WebsiteBucketPolicy:
+    Type: 'AWS::S3::BucketPolicy'
+    Properties:
+      PolicyDocument:
+        Id: MyPolicy
+        Version: 2012-10-17
+        Statement:
+          - Sid: PublicReadForGetBucketObjects
+            Effect: Allow
+            Principal: '*'
+            Action: 's3:GetObject'
+            Resource: !Join 
+              - ''
+              - - 'arn:aws:s3:::'
+                - !Ref WebsiteBucket
+                - /*
+      Bucket: !Ref WebsiteBucket
+
+#Create website url
+Outputs:
+  WebsiteURL:
+    Value: !GetAtt 
+      - S3Bucket
+      - WebsiteURL
+    Description: URL for website hosted on S3
+  S3BucketSecureURL:
+    Value: !Join 
+      - ''
+      - - 'https://'
+        - !GetAtt 
+          - S3Bucket
+          - DomainName
+    Description: Name of S3 bucket to hold website content
+
+  
+  # Create an S3 Bucket to store build artifacts
+  PipelineBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Join ['-', [!Ref AppName, !Ref 'AWS::AccountId', 's3-pipeline', !Ref Stage]]
+
+  # Create Access Role for CodePipeLine
+  CodePipeLineExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: codepipeline.amazonaws.com
+            Action: 'sts:AssumeRole'
+      ManagedPolicyArns:
+        - 'arn:aws:iam::aws:policy/AdministratorAccess'
+
+  # Create Access Role for CodeBuild
+  CodeBuildExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Statement:
+          Effect: Allow
+          Principal:
+            Service: codebuild.amazonaws.com
+          Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/AdministratorAccess
+
+  # Create Access Role for Cloudformation
+  CloudformationExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: cloudformation.amazonaws.com
+            Action: 'sts:AssumeRole'
+      ManagedPolicyArns:
+        - 'arn:aws:iam::aws:policy/AdministratorAccess'
+
+  # Create the BuildProject with required Build information
+  BuildProject:
+    Type: AWS::CodeBuild::Project
+    Properties: 
+      Artifacts: 
+        Type: CODEPIPELINE
+      Environment: 
+        ComputeType: BUILD_GENERAL1_SMALL
+        Image: aws/codebuild/standard:2.0
+        ImagePullCredentialsType: CODEBUILD
+        PrivilegedMode: True
+        Type: LINUX_CONTAINER
+      Name: !Join ['-', [!Ref AppName, !Ref 'AWS::AccountId', 'BuildProject', !Ref Stage]]
+      ServiceRole: !Ref CodeBuildExecutionRole
+      Source:
+        Type: CODEPIPELINE
+        # This file (buildspec.yml In Source code) contains commands to Create and Push a docker image to the ECR_REPOSITORY_URI
+        BuildSpec: buildspec.yml
+
+  # Create CodePipeline with 3 stages (Source, Build and Deploy)
+  CodePipeLine:
+    Type: AWS::CodePipeline::Pipeline
+    DependsOn: S3Bucket
+    Properties: 
+      ArtifactStore: 
+        Location: !Join ['-', [!Ref AppName, !Ref 'AWS::AccountId', 's3bucket', !Ref Stage]]
+        Type: S3
+      Name: !Join ['-', [!Ref AppName, !Ref 'AWS::AccountId', 'CodePipeLine',!Ref Stage]]
+      RestartExecutionOnUpdate: False
+      RoleArn: 
+        Fn::GetAtt: [ CodePipeLineExecutionRole, Arn ]
+        
+      Stages:
+
+        # Download source code from Github Repo to source-output-artifacts path in S3 Bucket
+        - Name: Source
+          Actions: 
+          - Name: Source
+            ActionTypeId: 
+              Category: Source
+              Owner: AWS
+              Provider: CodeCommit
+              Version: 1
+            Configuration:
+              RepositoryName: !Ref CodeCommitRepo
+              BranchName: !Ref CodeCommitBranch
+            RunOrder: 1
+            OutputArtifacts:
+              - Name: source-output-artifacts
+        
+        # Build the project using the BuildProject and Output build artifacts to build-output-artifacts path in S3 Bucket
+        - Name: Build
+          Actions:
+          - Name: Build
+            ActionTypeId:
+              Category: Build
+              Owner: AWS
+              Version: 1
+              Provider: CodeBuild
+            OutputArtifacts:
+              - Name: build-output-artifacts
+            InputArtifacts:
+              - Name: source-output-artifacts
+            Configuration:
+                ProjectName: !Ref BuildProject
+            RunOrder: 1
+
+        # Deploy the project by executing Fargate-Cluster.yml file in the Source code with Cloudformation.
+        - Name: Deploy
+          Actions:
+          - Name: Artifact
+            ActionTypeId:
+              Category: Build
+              Owner: AWS
+              Version: '1'
+              Provider: CodeBuild
+            InputArtifacts:
+            - Name: SourceOutput
+            OutputArtifacts:
+            - Name: DeployOutput
+            Configuration:
+              ProjectName: !Ref WebsiteBucket
+            RunOrder: 1
+          ArtifactStore:
+          Type: S3
+          Location: !Ref PipelineBucket
