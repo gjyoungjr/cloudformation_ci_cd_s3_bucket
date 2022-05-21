@@ -4,22 +4,22 @@ phases:
   install:
     runtime-versions:
       nodejs: 12
-   
+
+  pre_build:
     commands:
-        # install yarn
-        - yarn install
-       
+      #navigate to project root directory
+      # install dependencies
+      - yarn install
+
   build:
     commands:
-        # run build script
-        - yarn build
-     
+      # run build script
+      - yarn build
+
 artifacts:
   # include all files required to run application
-  # notably excluded is node_modules, as this will cause overwrite error on deploy
+  # we include only the static build files
   files:
-    - public/**/*
-    - src/**/*
-    - package.json
-    - appspec.yml
-    - scripts/**/*
+    - "**/*"
+   # reference directory where build file is located
+  base-directory: "build"

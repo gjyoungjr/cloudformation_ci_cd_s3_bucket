@@ -33,7 +33,7 @@ Resources:
       BucketName: !Join ['-', [!Ref AppName, !Ref 'AWS::AccountId', 's3-website', !Ref Stage]]
       WebsiteConfiguration:
         IndexDocument: index.html
-        ErrorDocument: error.html
+        # ErrorDocument: error.html
     DeletionPolicy: Retain
   
   #Create S3 Bucket Policy for public read access  
@@ -56,20 +56,18 @@ Resources:
       Bucket: !Ref WebsiteBucket
 
 #Create website url
-Outputs:
-  WebsiteURL:
-    Value: !GetAtt 
-      - S3Bucket
-      - WebsiteURL
-    Description: URL for website hosted on S3
-  S3BucketSecureURL:
-    Value: !Join 
-      - ''
-      - - 'https://'
-        - !GetAtt 
-          - S3Bucket
-          - DomainName
-    Description: Name of S3 bucket to hold website content
+# Outputs:
+#   WebsiteURL:
+#     Value: !GetAtt WebsiteBucket.WebsiteURL
+#     Description: URL for website hosted on S3
+  # S3BucketSecureURL:
+  #   Value: !Join 
+  #     - ''
+  #     - - 'https://'
+  #       - !GetAtt 
+  #         - S3Bucket
+  #         - DomainName
+    # Description: Name of S3 bucket to hold website content
 
   
   # Create an S3 Bucket to store build artifacts
@@ -142,8 +140,11 @@ Outputs:
     DependsOn: S3Bucket
     Properties: 
       ArtifactStore: 
-        Location: !Join ['-', [!Ref AppName, !Ref 'AWS::AccountId', 's3bucket', !Ref Stage]]
+        Location: !Ref PipelineBucket
+        # Location: !Join ['-', [!Ref AppName, !Ref 'AWS::AccountId', 's3bucket', !Ref Stage]]
         Type: S3
+      # ArtifactStore:
+      #   Type: S3
       Name: !Join ['-', [!Ref AppName, !Ref 'AWS::AccountId', 'CodePipeLine',!Ref Stage]]
       RestartExecutionOnUpdate: False
       RoleArn: 
@@ -157,12 +158,14 @@ Outputs:
           - Name: Source
             ActionTypeId: 
               Category: Source
-              Owner: AWS
-              Provider: CodeCommit
+              Owner: ThirdParty
+              Provider: GitHub
               Version: 1
             Configuration:
-              RepositoryName: !Ref CodeCommitRepo
-              BranchName: !Ref CodeCommitBranch
+              Repo: !Ref GithubRepo
+              Branch: !Ref GithubBranch
+              Owner: !Ref GithubUserName
+              OAuthToken: !Ref GithubOAuthToken
             RunOrder: 1
             OutputArtifacts:
               - Name: source-output-artifacts
@@ -200,6 +203,4 @@ Outputs:
             Configuration:
               ProjectName: !Ref WebsiteBucket
             RunOrder: 1
-          ArtifactStore:
-          Type: S3
-          Location: !Ref PipelineBucket
+         
