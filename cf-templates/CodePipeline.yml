@@ -5,19 +5,19 @@ Description: This template is used to create a CI/CD Pipeline that deploys a Rea
 Parameters:
   Stage:
     Type: String
-    Default: dev
+    Default: <STAGE>
   AppName: 
     Type: String
-    Default: devops-prac
+    Default: <APPNAME>
   GithubUserName:
     Type: String
-    Default: dirtbag-ctrl
+    Default: <GITHUB USER NAME>
   GithubRepo:
     Type: String
-    Default: cloudformation_ci_cd_s3_bucket
+    Default:  <GITHUB REPO>
   GithubBranch:
     Type: String
-    Default: master
+    Default:  <GITHUB BRANCH>
   GithubOAuthToken:
     Type: String
     Default: <GITHUB ACCESS TOKEN>
